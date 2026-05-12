@@ -62,7 +62,7 @@ Sensor data is transmitted from ESP32 over WiFi and visualized on a futuristic a
 ## 📷 Project Preview
 
 ### 🔧 Hardware Setup
-![Hardware](screenshots/hardware.png)
+![Hardware](screenshots/hardware.jpeg)
 
 ### 🌐 Dashboard Interface
 ![Dashboard](screenshots/dashboard.png)
