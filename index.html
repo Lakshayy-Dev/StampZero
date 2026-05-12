@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>StampZero — Smart Crowd Panic &amp; Suffocation Detection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@300;400;500&amp;family=Rajdhani:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg-deep: #040810;
+    --bg-panel: #080f1e;
+    --bg-card: #0c1628;
+    --bg-card2: #0f1d35;
+    --safe: #00e5a0;
+    --safe-dim: #00e5a022;
+    --warn: #ffb800;
+    --warn-dim: #ffb80022;
+    --crit: #ff2d55;
+    --crit-dim: #ff2d5522;
+    --accent: #00c8ff;
+    --accent2: #7b5ea7;
+    --text-primary: #e8f4ff;
+    --text-secondary: #6a8aaa;
+    --text-dim: #2a4060;
+    --border: #112240;
+    --border-bright: #1e3a5f;
+    --grid-line: #0a1830;
+    --glow-safe: 0 0 20px #00e5a055;
+    --glow-warn: 0 0 20px #ffb80055;
+    --glow-crit: 0 0 20px #ff2d5555;
+    --glow-accent: 0 0 20px #00c8ff44;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── LOADING SCREEN ─── */
+  #loader {
+    position: fixed; inset: 0;
+    background: var(--bg-deep);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    transition: opacity 0.8s ease, visibility 0.8s ease;
+  }
+  #loader.hidden { opacity: 0; visibility: hidden; }
+
+  .loader-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(1.5rem, 4vw, 2.8rem);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-shadow: 0 0 40px #00c8ff88;
+    animation: pulse-glow 1.5s ease-in-out infinite;
+  }
+  .loader-logo span { color: #ffffff; }
+
+  .loader-bar-wrap {
+    width: min(320px, 80vw);
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .loader-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--safe));
+    border-radius: 2px;
+    animation: load-fill 2s ease forwards;
+  }
+  .loader-text {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.2em;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes load-fill { from { width: 0 } to { width: 100% } }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes pulse-glow {
+    0%,100%{ text-shadow: 0 0 40px #00c8ff88; }
+    50%{ text-shadow: 0 0 80px #00c8ffcc, 0 0 120px #00c8ff44; }
+  }
+
+  /* ─── BACKGROUND GRID ─── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── SCAN LINE ─── */
+  body::after {
+    content: '';
+    position: fixed;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.15;
+    animation: scan 6s linear infinite;
+    pointer-events: none;
+    z-index: 1;
+  }
+  @keyframes scan { from { top: -2px } to { top: 100vh } }
+
+  /* ─── WRAPPER ─── */
+  .wrapper {
+    position: relative;
+    z-index: 2;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.2rem 1.8rem;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--safe), transparent);
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .brand-name {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(1.2rem, 3vw, 1.8rem);
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    text-shadow: var(--glow-accent);
+  }
+  .brand-name span { color: #ffffff; }
+  .brand-sub {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .clock {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.1em;
+    text-align: right;
+  }
+  .clock .time {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .btn-live {
+    background: var(--safe-dim);
+    border-color: var(--safe);
+    color: var(--safe);
+  }
+  .btn-live:hover, .btn-live.active {
+    background: var(--safe);
+    color: var(--bg-deep);
+    box-shadow: var(--glow-safe);
+  }
+  .btn-demo {
+    background: var(--warn-dim);
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+  .btn-demo:hover, .btn-demo.active {
+    background: var(--warn);
+    color: var(--bg-deep);
+    box-shadow: var(--glow-warn);
+  }
+  .btn-export {
+    background: transparent;
+    border-color: var(--border-bright);
+    color: var(--text-secondary);
+  }
+  .btn-export:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: var(--glow-accent);
+  }
+
+  /* ─── STATUS BANNER ─── */
+  .status-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.4rem 2rem;
+    border-radius: 12px;
+    border: 1px solid;
+    margin-bottom: 1.5rem;
+    transition: all 0.4s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .status-banner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at left center, currentColor 0%, transparent 60%);
+    opacity: 0.06;
+  }
+
+  .status-banner.safe {
+    background: var(--safe-dim);
+    border-color: var(--safe);
+    box-shadow: var(--glow-safe), inset 0 0 40px var(--safe-dim);
+  }
+  .status-banner.warning {
+    background: var(--warn-dim);
+    border-color: var(--warn);
+    box-shadow: var(--glow-warn), inset 0 0 40px var(--warn-dim);
+  }
+  .status-banner.critical {
+    background: var(--crit-dim);
+    border-color: var(--crit);
+    box-shadow: var(--glow-crit), inset 0 0 40px var(--crit-dim);
+    animation: critical-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes critical-pulse {
+    0%,100%{ box-shadow: var(--glow-crit), inset 0 0 40px var(--crit-dim); }
+    50%{ box-shadow: 0 0 40px #ff2d5588, 0 0 80px #ff2d5544, inset 0 0 60px var(--crit-dim); }
+  }
+
+  .status-left { display: flex; align-items: center; gap: 1.2rem; }
+
+  .status-icon {
+    font-size: 2.5rem;
+    animation: icon-pop 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes icon-pop { from{transform:scale(0)} to{transform:scale(1)} }
+
+  .status-label {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(1.5rem, 4vw, 2.4rem);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+  }
+  .status-banner.safe .status-label { color: var(--safe); }
+  .status-banner.warning .status-label { color: var(--warn); }
+  .status-banner.critical .status-label { color: var(--crit); }
+
+  .status-desc {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.12em;
+    margin-top: 0.3rem;
+  }
+
+  .score-ring-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .score-ring {
+    position: relative;
+    width: 90px;
+    height: 90px;
+  }
+  .score-ring svg {
+    transform: rotate(-90deg);
+    width: 90px; height: 90px;
+  }
+  .score-ring .track { fill: none; stroke: var(--border); stroke-width: 6; }
+  .score-ring .fill {
+    fill: none;
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 226;
+    stroke-dashoffset: 226;
+    transition: stroke-dashoffset 0.8s ease, stroke 0.4s ease;
+  }
+  .score-ring .center-val {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .score-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .score-max {
+    font-size: 0.55rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.1em;
+  }
+  .score-title {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  /* ─── SENSOR CARDS GRID ─── */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .sensor-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, transform 0.2s;
+    cursor: default;
+  }
+  .sensor-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-bright);
+  }
+  .sensor-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--card-accent, var(--accent)), transparent);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.8rem;
+  }
+  .card-icon { font-size: 1.4rem; }
+  .card-label {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .card-value {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    font-weight: 700;
+    color: var(--card-accent, var(--accent));
+    line-height: 1;
+    transition: all 0.3s ease;
+  }
+  .card-unit {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-left: 0.3rem;
+  }
+
+  .card-bar-wrap {
+    margin-top: 0.8rem;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .card-bar {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--card-accent, var(--accent));
+    transition: width 0.6s ease;
+    box-shadow: 0 0 8px var(--card-accent, var(--accent));
+  }
+
+  .card-trend {
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    margin-top: 0.4rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── CHARTS ROW ─── */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media(max-width: 900px) {
+    .charts-row { grid-template-columns: 1fr; }
+  }
+
+  .chart-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .chart-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .panel-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .panel-title::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+
+  .chart-wrap { position: relative; }
+
+  /* ─── BOTTOM ROW ─── */
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media(max-width: 900px) {
+    .bottom-row { grid-template-columns: 1fr; }
+  }
+
+  /* ─── ALERT PANEL ─── */
+  .alert-list {
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-bright) transparent;
+  }
+  .alert-list::-webkit-scrollbar { width: 4px; }
+  .alert-list::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+  .alert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+    padding: 0.7rem 0.8rem;
+    border-radius: 6px;
+    margin-bottom: 0.4rem;
+    border: 1px solid transparent;
+    animation: slide-in 0.3s ease;
+    transition: opacity 0.3s;
+  }
+  @keyframes slide-in {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  .alert-item.safe-alert { background: var(--safe-dim); border-color: #00e5a022; }
+  .alert-item.warn-alert { background: var(--warn-dim); border-color: #ffb80022; }
+  .alert-item.crit-alert { background: var(--crit-dim); border-color: #ff2d5522; }
+
+  .alert-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+  .safe-alert .alert-dot { background: var(--safe); box-shadow: 0 0 6px var(--safe); }
+  .warn-alert .alert-dot { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+  .crit-alert .alert-dot { background: var(--crit); box-shadow: 0 0 6px var(--crit); }
+
+  .alert-msg {
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    flex: 1;
+    letter-spacing: 0.03em;
+  }
+  .alert-time {
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .no-alerts {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 2rem;
+    letter-spacing: 0.1em;
+  }
+
+  /* ─── DEVICE INFO ─── */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+  }
+  .info-item {
+    background: var(--bg-card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+  }
+  .info-key {
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+  }
+  .info-val {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .info-val.online { color: var(--safe); }
+  .info-val.offline { color: var(--crit); }
+
+  /* ─── FOOTER ─── */
+  footer {
+    text-align: center;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+    margin-top: 1rem;
+  }
+  footer span { color: var(--accent); }
+
+  /* ─── REFRESH INDICATOR ─── */
+  .refresh-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--safe);
+    box-shadow: 0 0 6px var(--safe);
+    animation: blink-dot 1s ease-in-out infinite;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+  }
+  @keyframes blink-dot {
+    0%,100%{opacity:1;transform:scale(1)}
+    50%{opacity:0.3;transform:scale(0.8)}
+  }
+
+  /* ─── MOBILE ─── */
+  @media(max-width: 600px) {
+    .wrapper { padding: 0.8rem; }
+    .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    .header-right { justify-content: flex-end; }
+  }
+</style>
+</head>
+<body>
+<!-- LOADING SCREEN -->
+<div id="loader">
+<div class="loader-logo">STAMP<span>ZERO</span></div>
+<div class="loader-bar-wrap"><div class="loader-bar"></div></div>
+<div class="loader-text">INITIALIZING SENSOR ARRAY...</div>
+</div>
+<div class="wrapper" id="app" style="opacity:0;transition:opacity 0.8s ease">
+<!-- HEADER -->
+<header>
+<div class="brand">
+<div class="brand-name">STAMP<span>ZERO</span></div>
+<div class="brand-sub">Smart Crowd Panic &amp; Suffocation Detection System · ESP32</div>
+</div>
+<div class="header-right">
+<div class="clock">
+<div class="time" id="clock-time">--:--:--</div>
+<div id="clock-date">Loading...</div>
+</div>
+<button class="btn btn-live active" id="btn-live" onclick="setMode('live')">⬤ Live</button>
+<button class="btn btn-demo" id="btn-demo" onclick="setMode('demo')">◈ Demo</button>
+<button class="btn btn-export" onclick="exportCSV()">↓ Export CSV</button>
+</div>
+</header>
+<!-- STATUS BANNER -->
+<div class="status-banner safe" id="status-banner">
+<div class="status-left">
+<div class="status-icon" id="status-icon">🟢</div>
+<div>
+<div class="status-label" id="status-label">SAFE</div>
+<div class="status-desc" id="status-desc"><span class="refresh-dot"></span>REAL-TIME MONITORING ACTIVE · ESP32 CONNECTED</div>
+</div>
+</div>
+<div class="score-ring-wrap">
+<div class="score-ring">
+<svg viewbox="0 0 80 80">
+<circle class="track" cx="40" cy="40" r="36"></circle>
+<circle class="fill" cx="40" cy="40" id="score-ring-fill" r="36" stroke="#00e5a0"></circle>
+</svg>
+<div class="center-val">
+<div class="score-val" id="score-ring-val">0</div>
+<div class="score-max">/ 5</div>
+</div>
+</div>
+<div class="score-title">RISK SCORE</div>
+</div>
+</div>
+<!-- SENSOR CARDS -->
+<div class="cards-grid">
+<div class="sensor-card" style="--card-accent:#00c8ff">
+<div class="card-top">
+<span class="card-icon">🔊</span>
+<span class="card-label">Sound Level</span>
+</div>
+<div><span class="card-value" id="val-sound">---</span><span class="card-unit">dB</span></div>
+<div class="card-bar-wrap"><div class="card-bar" id="bar-sound" style="width:0%"></div></div>
+<div class="card-trend" id="trend-sound">— Initializing</div>
+</div>
+<div class="sensor-card" style="--card-accent:#a78bfa">
+<div class="card-top">
+<span class="card-icon">🏃</span>
+<span class="card-label">Movement</span>
+</div>
+<div><span class="card-value" id="val-move">---</span><span class="card-unit">g</span></div>
+<div class="card-bar-wrap"><div class="card-bar" id="bar-move" style="width:0%"></div></div>
+<div class="card-trend" id="trend-move">— Initializing</div>
+</div>
+<div class="sensor-card" style="--card-accent:#34d399">
+<div class="card-top">
+<span class="card-icon">🌫️</span>
+<span class="card-label">Air Quality</span>
+</div>
+<div><span class="card-value" id="val-air">---</span><span class="card-unit">ppm</span></div>
+<div class="card-bar-wrap"><div class="card-bar" id="bar-air" style="width:0%"></div></div>
+<div class="card-trend" id="trend-air">— Initializing</div>
+</div>
+<div class="sensor-card" style="--card-accent:#fb923c">
+<div class="card-top">
+<span class="card-icon">📡</span>
+<span class="card-label">Distance</span>
+</div>
+<div><span class="card-value" id="val-dist">---</span><span class="card-unit">cm</span></div>
+<div class="card-bar-wrap"><div class="card-bar" id="bar-dist" style="width:0%"></div></div>
+<div class="card-trend" id="trend-dist">— Initializing</div>
+</div>
+<div class="sensor-card" style="--card-accent:#38bdf8">
+<div class="card-top">
+<span class="card-icon">💧</span>
+<span class="card-label">Humidity</span>
+</div>
+<div><span class="card-value" id="val-hum">---</span><span class="card-unit">%</span></div>
+<div class="card-bar-wrap"><div class="card-bar" id="bar-hum" style="width:0%"></div></div>
+<div class="card-trend" id="trend-hum">— Initializing</div>
+</div>
+<div class="sensor-card" style="--card-accent:#f43f5e">
+<div class="card-top">
+<span class="card-icon">⚠️</span>
+<span class="card-label">Risk Score</span>
+</div>
+<div><span class="card-value" id="val-score">---</span><span class="card-unit">/ 5</span></div>
+<div class="card-bar-wrap"><div class="card-bar" id="bar-score" style="width:0%"></div></div>
+<div class="card-trend" id="trend-score">— Initializing</div>
+</div>
+</div>
+<!-- CHARTS ROW -->
+<div class="charts-row">
+<div class="chart-panel">
+<div class="panel-title">Sensor Values — Current Snapshot</div>
+<div class="chart-wrap">
+<canvas height="220" id="barChart"></canvas>
+</div>
+</div>
+<div class="chart-panel">
+<div class="panel-title">State Distribution</div>
+<div class="chart-wrap">
+<canvas height="220" id="pieChart"></canvas>
+</div>
+</div>
+</div>
+<!-- LINE CHART -->
+<div class="chart-panel" style="margin-bottom:1.5rem">
+<div class="panel-title">Risk Score — Live Timeline</div>
+<div class="chart-wrap">
+<canvas height="140" id="lineChart"></canvas>
+</div>
+</div>
+<!-- BOTTOM ROW -->
+<div class="bottom-row">
+<!-- ALERTS -->
+<div class="chart-panel">
+<div class="panel-title">Alert History</div>
+<div class="alert-list" id="alert-list">
+<div class="no-alerts">NO EVENTS RECORDED</div>
+</div>
+</div>
+<!-- DEVICE INFO -->
+<div class="chart-panel">
+<div class="panel-title">Device Information</div>
+<div class="info-grid">
+<div class="info-item">
+<div class="info-key">Device</div>
+<div class="info-val">ESP32-DEV-MODULE</div>
+</div>
+<div class="info-item">
+<div class="info-key">Connection</div>
+<div class="info-val online" id="conn-status">● ONLINE</div>
+</div>
+<div class="info-item">
+<div class="info-key">Uptime</div>
+<div class="info-val" id="uptime-val">00:00:00</div>
+</div>
+<div class="info-item">
+<div class="info-key">Updates</div>
+<div class="info-val" id="update-count">0</div>
+</div>
+<div class="info-item">
+<div class="info-key">Firmware</div>
+<div class="info-val">v2.4.1-stable</div>
+</div>
+<div class="info-item">
+<div class="info-key">Location</div>
+<div class="info-val">VIT University (Chennai Campus)</div>
+</div>
+<div class="info-item">
+<div class="info-key">Sensors</div>
+<div class="info-val">5 Active</div>
+</div>
+<div class="info-item">
+<div class="info-key">Mode</div>
+<div class="info-val" id="mode-val">LIVE</div>
+</div>
+</div>
+</div>
+</div>
+<footer>
+<span>STAMPZERO</span> — Smart Crowd Panic &amp; Suffocation Detection System  ·  ESP32 IoT Dashboard  ·  Built with ❤️ for Electronic Systems · By LAKSHAY
+  </footer>
+</div>
+<script>
+// ─────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────
+let mode = 'live';
+let updateCount = 0;
+let startTime = Date.now();
+let stateCounts = { safe: 0, warning: 0, critical: 0 };
+let scoreHistory = [];
+let timeHistory = [];
+let prevData = null;
+let alerts = [];
+let lastStatus = null;
+
+const MAX_LINE_POINTS = 30;
+
+// ─────────────────────────────────────────
+//  DATA GENERATION
+// ─────────────────────────────────────────
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function randF(min, max, dp=1) { return parseFloat((Math.random() * (max - min) + min).toFixed(dp)); }
+
+let demoPhase = 0;
+
+function generateData() {
+  if (mode === 'demo') {
+    // Cycle through SAFE → WARNING → CRITICAL → back
+    demoPhase = (demoPhase + 1) % 120;
+    const p = demoPhase;
+    if (p < 40) {
+      // SAFE phase
+      return {
+        sound: rand(30, 55), move: randF(0.1, 0.5), air: rand(100, 250),
+        dist: rand(80, 200), hum: rand(35, 55), score: rand(0, 1)
+      };
+    } else if (p < 80) {
+      // WARNING phase
+      return {
+        sound: rand(65, 85), move: randF(0.6, 1.5), air: rand(300, 500),
+        dist: rand(30, 70), hum: rand(60, 75), score: rand(2, 3)
+      };
+    } else {
+      // CRITICAL phase
+      return {
+        sound: rand(90, 120), move: randF(1.8, 3.5), air: rand(550, 800),
+        dist: rand(5, 25), hum: rand(78, 95), score: rand(4, 5)
+      };
+    }
+  }
+
+  // Live simulation with smooth drift
+  return {
+    sound: rand(28, 110),
+    move: randF(0.05, 3.5),
+    air: rand(80, 750),
+    dist: rand(5, 200),
+    hum: rand(30, 95),
+    score: rand(0, 5)
+  };
+}
+
+function getStatus(score) {
+  if (score <= 1) return 'SAFE';
+  if (score <= 2) return 'WARNING';
+  return 'CRITICAL';
+}
+
+// ─────────────────────────────────────────
+//  CHART SETUP
+// ─────────────────────────────────────────
+const CHART_DEFAULTS = {
+  color: '#6a8aaa',
+  font: { family: "'JetBrains Mono', monospace", size: 10 }
+};
+Chart.defaults.color = CHART_DEFAULTS.color;
+Chart.defaults.font = CHART_DEFAULTS.font;
+
+// BAR CHART
+const barCtx = document.getElementById('barChart').getContext('2d');
+const barChart = new Chart(barCtx, {
+  type: 'bar',
+  data: {
+    labels: ['Sound (dB÷10)', 'Move (g)', 'Air (ppm÷10)', 'Dist (cm)', 'Humidity (%)'],
+    datasets: [{
+      data: [0,0,0,0,0],
+      backgroundColor: ['#00c8ff33','#a78bfa33','#34d39933','#fb923c33','#38bdf833'],
+      borderColor:     ['#00c8ff','#a78bfa','#34d399','#fb923c','#38bdf8'],
+      borderWidth: 1.5,
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false }, tooltip: {
+      backgroundColor: '#0c1628',
+      borderColor: '#1e3a5f',
+      borderWidth: 1,
+    }},
+    scales: {
+      x: { grid: { color: '#0a1830' }, ticks: { font: { size: 9 } } },
+      y: { grid: { color: '#0a1830' }, beginAtZero: true, max: 120 }
+    },
+    animation: { duration: 400 }
+  }
+});
+
+// PIE CHART
+const pieCtx = document.getElementById('pieChart').getContext('2d');
+const pieChart = new Chart(pieCtx, {
+  type: 'doughnut',
+  data: {
+    labels: ['SAFE', 'WARNING', 'CRITICAL'],
+    datasets: [{
+      data: [1, 0, 0],
+      backgroundColor: ['#00e5a033','#ffb80033','#ff2d5533'],
+      borderColor:     ['#00e5a0','#ffb800','#ff2d55'],
+      borderWidth: 1.5,
+      hoverOffset: 8,
+    }]
+  },
+  options: {
+    responsive: true,
+    cutout: '62%',
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: { padding: 12, font: { size: 9 }, usePointStyle: true, pointStyleWidth: 8 }
+      },
+      tooltip: {
+        backgroundColor: '#0c1628',
+        borderColor: '#1e3a5f',
+        borderWidth: 1,
+        callbacks: {
+          label: (ctx) => ` ${ctx.label}: ${ctx.raw} readings`
+        }
+      }
+    },
+    animation: { duration: 600 }
+  }
+});
+
+// LINE CHART
+const lineCtx = document.getElementById('lineChart').getContext('2d');
+const lineGrad = lineCtx.createLinearGradient(0, 0, 0, 200);
+lineGrad.addColorStop(0, '#f43f5e44');
+lineGrad.addColorStop(1, '#f43f5e00');
+
+const lineChart = new Chart(lineCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Risk Score',
+      data: [],
+      borderColor: '#f43f5e',
+      backgroundColor: lineGrad,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointBackgroundColor: '#f43f5e',
+      pointBorderColor: '#0c1628',
+      pointBorderWidth: 1,
+      fill: true,
+      tension: 0.4,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0c1628',
+        borderColor: '#1e3a5f',
+        borderWidth: 1,
+      }
+    },
+    scales: {
+      x: { grid: { color: '#0a1830' }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+      y: {
+        grid: { color: '#0a1830' },
+        min: 0, max: 5,
+        ticks: { stepSize: 1 }
+      }
+    },
+    animation: { duration: 300 }
+  }
+});
+
+// ─────────────────────────────────────────
+//  UPDATE UI
+// ─────────────────────────────────────────
+
+function update() {
+
+  if (mode === 'demo') {
+    const d = generateData();
+    applyData(d);
+    return Promise.resolve();
+  } else {
+
+    return fetch("http://stampzero.local/data")
+      .then(res => res.json())
+      .then(d => {
+
+        d.move = d.movement;
+        d.dist = d.distance;
+        d.hum = d.humidity;
+
+        applyData(d);
+      })
+      .catch(err => console.log("Error:", err));
+  }
+}
+
+function applyData(d) {
+  
+  const status = getStatus(d.score);
+  updateCount++;
+
+  // Status banner
+  const banner = document.getElementById('status-banner');
+  const icon = document.getElementById('status-icon');
+  const label = document.getElementById('status-label');
+
+  banner.className = 'status-banner ' + status.toLowerCase();
+  if (status === 'SAFE') { icon.textContent = '🟢'; }
+  else if (status === 'WARNING') { icon.textContent = '🟡'; }
+  else { icon.textContent = '🔴'; }
+  label.textContent = status;
+
+  // Score ring
+  const fillEl = document.getElementById('score-ring-fill');
+  const scoreValEl = document.getElementById('score-ring-val');
+  const pct = d.score / 5;
+  const circumference = 226;
+  fillEl.style.strokeDashoffset = circumference - pct * circumference;
+  const colors = { SAFE: '#00e5a0', WARNING: '#ffb800', CRITICAL: '#ff2d55' };
+  fillEl.setAttribute('stroke', colors[status]);
+  scoreValEl.textContent = d.score;
+  scoreValEl.style.color = colors[status];
+
+  // Sensor cards
+  const sound_pct = Math.min(d.sound / 120 * 100, 100);
+  const move_pct  = Math.min(d.move / 3.5 * 100, 100);
+  const air_pct   = Math.min(d.air / 800 * 100, 100);
+  const dist_pct  = Math.min(d.dist / 200 * 100, 100);
+  const hum_pct   = Math.min(d.hum, 100);
+  const score_pct = (d.score / 5) * 100;
+
+  setCard('sound', d.sound, sound_pct, prevData?.sound);
+  setCard('move',  d.move,  move_pct,  prevData?.move);
+  setCard('air',   d.air,   air_pct,   prevData?.air);
+  setCard('dist',  d.dist,  dist_pct,  prevData?.dist);
+  setCard('hum',   d.hum,   hum_pct,   prevData?.hum);
+  setCard('score', d.score, score_pct, prevData?.score);
+
+  // Bar chart
+  barChart.data.datasets[0].data = [
+    d.sound / 10 ,
+    d.move ,
+    d.air / 10,
+    d.dist ,
+    d.hum
+  ];
+  barChart.update();
+
+  // State counts + pie
+  stateCounts[status.toLowerCase()]++;
+  pieChart.data.datasets[0].data = [stateCounts.safe, stateCounts.warning, stateCounts.critical];
+  pieChart.update();
+
+  // Line chart
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  scoreHistory.push(d.score);
+  timeHistory.push(ts);
+  if (scoreHistory.length > MAX_LINE_POINTS) {
+    scoreHistory.shift();
+    timeHistory.shift();
+  }
+  lineChart.data.labels = timeHistory;
+  lineChart.data.datasets[0].data = scoreHistory;
+  lineChart.update();
+
+  // Alert history
+  if (lastStatus !== status) {
+    addAlert(status, ts);
+    lastStatus = status;
+  }
+
+  // Device info
+  document.getElementById('update-count').textContent = updateCount;
+
+  prevData = d;
+}
+
+function setCard(id, val, pct, prev) {
+  
+const el = document.getElementById('val-' + id);
+let current = parseFloat(el.textContent) || 0;
+let target = val;
+let step = (target - current) / 6;
+
+let i = 0;
+let interval = setInterval(()=>{
+  current += step;
+  el.textContent = typeof val === 'number' && !Number.isInteger(val) ? current.toFixed(2) : Math.round(current);
+  i++;
+  if(i>=6){ clearInterval(interval); el.textContent = val; }
+},40);
+
+  document.getElementById('bar-' + id).style.width = pct + '%';
+  if (prev !== null && prev !== undefined) {
+    const diff = val - prev;
+    const trend = document.getElementById('trend-' + id);
+    if (Math.abs(diff) < 0.01) {
+      trend.textContent = '— Stable';
+    } else {
+      trend.textContent = (diff > 0 ? '▲ +' : '▼ ') + (typeof val === 'number' && !Number.isInteger(val) ? diff.toFixed(2) : diff);
+    }
+  }
+}
+
+function addAlert(status, ts) {
+  const msgs = {
+    SAFE: ['Crowd density normalized', 'Sensors returned to safe range', 'All parameters within limits'],
+    WARNING: ['Elevated crowd density detected', 'Air quality declining', 'Movement spike observed', 'Reduced sensor clearance'],
+    CRITICAL: ['CRITICAL: Panic conditions detected!', 'CRITICAL: Suffocation risk elevated!', 'CRITICAL: Crowd surge detected!']
+  };
+  const msg = msgs[status][Math.floor(Math.random() * msgs[status].length)];
+  alerts.unshift({ status, msg, ts });
+  if (alerts.length > 50) alerts.pop();
+  renderAlerts();
+}
+
+function renderAlerts() {
+  const el = document.getElementById('alert-list');
+  if (alerts.length === 0) {
+    el.innerHTML = '<div class="no-alerts">NO EVENTS RECORDED</div>';
+    return;
+  }
+  el.innerHTML = alerts.slice(0, 20).map(a => `
+    <div class="alert-item ${a.status === 'SAFE' ? 'safe-alert' : a.status === 'WARNING' ? 'warn-alert' : 'crit-alert'}">
+      <div class="alert-dot"></div>
+      <div class="alert-msg">${a.msg}</div>
+      <div class="alert-time">${a.ts}</div>
+    </div>
+  `).join('');
+}
+
+// ─────────────────────────────────────────
+//  CLOCK & UPTIME
+// ─────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock-time').textContent =
+    now.toLocaleTimeString('en-US', { hour12: false });
+  document.getElementById('clock-date').textContent =
+    now.toLocaleDateString('en-US', { weekday:'short', year:'numeric', month:'short', day:'numeric' });
+
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('uptime-val').textContent = `${h}:${m}:${s}`;
+}
+
+// ─────────────────────────────────────────
+//  MODE SWITCHING
+// ─────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  demoPhase = 0;
+  document.getElementById('btn-live').classList.toggle('active', m === 'live');
+  document.getElementById('btn-demo').classList.toggle('active', m === 'demo');
+  document.getElementById('mode-val').textContent = m.toUpperCase();
+}
+
+// ─────────────────────────────────────────
+//  EXPORT CSV
+// ─────────────────────────────────────────
+function exportCSV() {
+  if (!prevData) return;
+  const rows = [
+    ['Timestamp', 'Sound_dB', 'Movement_g', 'AirQuality_ppm', 'Distance_cm', 'Humidity_%', 'Score', 'Status'],
+    ...scoreHistory.map((sc, i) => [
+      timeHistory[i], '', '', '', '', '', sc,
+      sc <= 1 ? 'SAFE' : sc <= 3 ? 'WARNING' : 'CRITICAL'
+    ])
+  ];
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `stampzero_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+  a.click();
+}
+
+// ─────────────────────────────────────────
+//  STARTUP
+// ─────────────────────────────────────────
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.opacity = '1';
+
+    // Start loops
+    startLoop();
+
+    function startLoop() {
+      update().finally(() => {
+        setTimeout(startLoop, 1500);
+      });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+  }, 2400);
+});
+</script>
+</body>
+</html>
